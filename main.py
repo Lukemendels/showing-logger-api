@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from google import genai
 from dotenv import load_dotenv
@@ -19,9 +19,6 @@ app = FastAPI(title="Showing Logger API")
 client = genai.Client() if GEMINI_API_KEY else None
 
 # Pydantic models for request and response
-class ShowingTranscriptPayload(BaseModel):
-    transcript: str
-
 class ShowingData(BaseModel):
     client_name: str
     property_address: str
@@ -40,29 +37,31 @@ async def verify_auth_header(authorization: str = Header(None)):
     return authorization
 
 @app.post("/api/log-showing")
-async def log_showing(payload: ShowingTranscriptPayload, auth: str = Depends(verify_auth_header)):
-    if not payload.transcript.strip():
-        raise HTTPException(status_code=400, detail="Transcript is empty")
+async def log_showing(audio: UploadFile = File(...), auth: str = Depends(verify_auth_header)):
+    if not audio:
+        raise HTTPException(status_code=400, detail="Audio file is missing")
 
     if not client:
         raise HTTPException(status_code=500, detail="Gemini API Key is missing. Backend not fully configured.")
 
     # 1. Ask Gemini to extract data
-    prompt = f"""
-    You are a real estate assistant. Extract the following information from the dictate transcript of a property showing.
+    prompt = """
+    You are a real estate assistant. Listen to the audio dictation of a property showing.
     
     Return exactly matching this JSON schema. If any information is missing, use "N/A" or make a reasonable empty assumption (like "None").
     For 'sentiment', summarize the buyer's feeling about the property in a few words.
     For 'drafted_sms', write a short, polite text message to the client thanking them for the showing and mentioning the next steps if any, or just touching base.
-    
-    Transcript:
-    "{payload.transcript}"
     """
+
+    audio_bytes = await audio.read()
 
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=prompt,
+            contents=[
+                genai.types.Part.from_bytes(data=audio_bytes, mime_type=audio.content_type or "audio/mp4"),
+                prompt
+            ],
             config=genai.types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ShowingData,
@@ -72,7 +71,7 @@ async def log_showing(payload: ShowingTranscriptPayload, auth: str = Depends(ver
         extracted_data = json.loads(response.text)
     except Exception as e:
         print(f"Error calling Gemini: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process transcript with Gemini")
+        raise HTTPException(status_code=500, detail="Failed to process audio with Gemini")
 
     # 2. Send the extracted data to Google Sheets Webhook
     sheet_status = "Skipped (No URL provided)"
