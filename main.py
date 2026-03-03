@@ -18,13 +18,17 @@ app = FastAPI(title="Showing Logger API")
 # Initialize Gemini Client
 client = genai.Client() if GEMINI_API_KEY else None
 
+from typing import List, Optional
+
 # Pydantic models for request and response
-class ShowingData(BaseModel):
-    client_name: str
-    property_address: str
-    sentiment: str
-    action_items: str
-    drafted_sms: str
+class Action(BaseModel):
+    action_type: str  # "ADD_ROW" or "CHECK_OFF"
+    tab: str          # "Tasks", "Touchpoints", "Recon", "Personal", or "Contacts"
+    task_name: Optional[str] = None
+    row_data: Optional[List[str]] = None
+
+class ActionList(BaseModel):
+    actions: List[Action]
 
 # Dependency to check headers
 async def verify_auth_header(authorization: str = Header(None)):
@@ -36,21 +40,57 @@ async def verify_auth_header(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
     return authorization
 
-@app.post("/api/log-showing")
-async def log_showing(audio: UploadFile = File(...), auth: str = Depends(verify_auth_header)):
+@app.post("/api/second-brain")
+async def process_second_brain(audio: UploadFile = File(...), auth: str = Depends(verify_auth_header)):
     if not audio:
         raise HTTPException(status_code=400, detail="Audio file is missing")
 
     if not client:
         raise HTTPException(status_code=500, detail="Gemini API Key is missing. Backend not fully configured.")
 
-    # 1. Ask Gemini to extract data
-    prompt = """
-    You are a real estate assistant. Listen to the audio dictation of a property showing.
+    # 1. Fetch Current State from Google Sheets
+    sheet_context = {}
+    if SHEETS_WEBHOOK_URL:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True) as http_client:
+                context_response = await http_client.get(
+                    SHEETS_WEBHOOK_URL,
+                    timeout=10.0
+                )
+                context_response.raise_for_status()
+                sheet_context = context_response.json()
+        except Exception as e:
+            print(f"Error fetching state from Sheets Webhook: {e}")
+            # We can still proceed even if context fails
+
+    # 2. Ask Gemini to extract data
+    prompt = f"""
+    You are an intelligent Second Brain assistant. Listen to the audio dictation and parse it into structured actions for a Google Sheet.
     
-    Return exactly matching this JSON schema. If any information is missing, use "N/A" or make a reasonable empty assumption (like "None").
-    For 'sentiment', summarize the buyer's feeling about the property in a few words.
-    For 'drafted_sms', write a short, polite text message to the client thanking them for the showing and mentioning the next steps if any, or just touching base.
+    Current Context:
+    - Active Tasks: {json.dumps(sheet_context.get('tasks', []))}
+    - Contacts: {json.dumps(sheet_context.get('contacts', []))}
+    
+    Based on the dictation, create a list of actions to perform on the Google Sheet.
+    
+    Allowed action_type: "ADD_ROW" or "CHECK_OFF"
+    Allowed tabs: "Tasks", "Touchpoints", "Recon", "Personal", "Contacts"
+    
+    Rules for ADD_ROW:
+    - row_data must perfectly match the tab's headers.
+    - Tasks headers: ["FALSE", "Date", "Task", "Details", "Action Required"]
+    - Touchpoints headers: ["FALSE", "Date", "Person", "Context", "Drafted SMS"]
+    - Recon headers: ["FALSE", "Date", "Opportunity", "Location", "Next Steps"]
+    - Personal headers: ["FALSE", "Date", "Item", "Details", "Notes"]
+    - Contacts headers: ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" here)
+    - If adding a row with a checkbox, the first item in row_data must be the string "FALSE".
+    - Use "YYYY-MM-DD" for dates.
+    
+    Rules for CHECK_OFF:
+    - task_name is required. It should match or closely resemble the name of the item to be checked off.
+    - row_data should be null.
+    
+    Generate the JSON matching the ActionList schema.
     """
 
     audio_bytes = await audio.read()
@@ -64,7 +104,7 @@ async def log_showing(audio: UploadFile = File(...), auth: str = Depends(verify_
             ],
             config=genai.types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=ShowingData,
+                response_schema=ActionList,
                 temperature=0.2
             ),
         )
@@ -73,7 +113,7 @@ async def log_showing(audio: UploadFile = File(...), auth: str = Depends(verify_
         print(f"Error calling Gemini: {e}")
         raise HTTPException(status_code=500, detail="Failed to process audio with Gemini")
 
-    # 2. Send the extracted data to Google Sheets Webhook
+    # 3. Send the extracted actions to Google Sheets Webhook
     sheet_status = "Skipped (No URL provided)"
     if SHEETS_WEBHOOK_URL:
         try:
@@ -81,16 +121,16 @@ async def log_showing(audio: UploadFile = File(...), auth: str = Depends(verify_
                 sheet_response = await http_client.post(
                     SHEETS_WEBHOOK_URL, 
                     json=extracted_data,
-                    timeout=10.0
+                    timeout=15.0
                 )
                 sheet_response.raise_for_status()
-                sheet_status = "Success"
+                sheet_status = sheet_response.json()
         except Exception as e:
             print(f"Error sending data to Sheets Webhook: {e}")
             sheet_status = f"Failed: {str(e)}"
 
     return {
         "status": "success", 
-        "data": extracted_data,
+        "actions": extracted_data,
         "sheet_status": sheet_status
     }
