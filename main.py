@@ -110,6 +110,10 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
        * "Action Required": The physical, immediate next step starting with a verb (e.g., "Call Title Company", "Draft Email to John"). Do NOT repeat the Task name here.
        
     2. Touchpoints Tab ["FALSE", "Date", "Time Due", "Person", "Context", "Drafted SMS"]
+       * "Person": The name of the client or contact.
+       * "Context": Why are we reaching out? (e.g. "Just had a baby", "Met at coffee shop").
+       * "Drafted SMS": You MUST write a polite, ready-to-send text message based on the context. Do not leave this blank.
+       
     3. Recon Tab ["FALSE", "Date", "Time Due", "Opportunity", "Location", "Next Steps"]
     4. Personal Tab ["FALSE", "Date", "Time Due", "Item", "Details", "Notes"]
     5. Contacts Tab ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" or "Time Due" here)
