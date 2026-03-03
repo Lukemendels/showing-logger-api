@@ -83,13 +83,18 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     
     Rules for ADD_ROW:
     - row_data must perfectly match the tab's headers in exact order.
-    - Tasks headers: ["FALSE", "Date", "Time Due", "Task", "Details", "Action Required"]
-      * IMPORTANT: Make "Action Required" highly specific, e.g. "Draft email to title company", "Call John at 5 PM", "Go to Publix". Do not just put "Call/Email".
-    - Touchpoints headers: ["FALSE", "Date", "Time Due", "Person", "Context", "Drafted SMS"]
-    - Recon headers: ["FALSE", "Date", "Time Due", "Opportunity", "Location", "Next Steps"]
-    - Personal headers: ["FALSE", "Date", "Time Due", "Item", "Details", "Notes"]
-    - Contacts headers: ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" or "Time Due" here)
-    - "Time Due" should be formatting like "10:30 AM", "Morning", "Afternoon", or left as an empty string "" if not stated.
+    
+    1. Tasks Tab ["FALSE", "Date", "Time Due", "Task", "Details", "Action Required"]
+       * "Task": A short, 3-to-5 word title (e.g., "Smith Closing Docs").
+       * "Details": Any extra context or information provided (e.g., "Missing signature on page 4"). Leave blank if none.
+       * "Action Required": The physical, immediate next step starting with a verb (e.g., "Call Title Company", "Draft Email to John"). Do NOT repeat the Task name here.
+       
+    2. Touchpoints Tab ["FALSE", "Date", "Time Due", "Person", "Context", "Drafted SMS"]
+    3. Recon Tab ["FALSE", "Date", "Time Due", "Opportunity", "Location", "Next Steps"]
+    4. Personal Tab ["FALSE", "Date", "Time Due", "Item", "Details", "Notes"]
+    5. Contacts Tab ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" or "Time Due" here)
+    
+    - "Time Due" should be formatted like "10:30 AM", "Morning", "Afternoon", or left as an empty string "" if not stated.
     - If adding a row with a checkbox, the first item in row_data must be the string "FALSE".
     - Use "YYYY-MM-DD" for dates.
     
