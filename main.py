@@ -82,13 +82,14 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     Allowed tabs: "Tasks", "Touchpoints", "Recon", "Personal", "Contacts"
     
     Rules for ADD_ROW:
-    - row_data must perfectly match the tab's headers.
-    - Tasks headers: ["FALSE", "Date", "Task", "Details", "Action Required"]
+    - row_data must perfectly match the tab's headers in exact order.
+    - Tasks headers: ["FALSE", "Date", "Time Due", "Task", "Details", "Action Required"]
       * IMPORTANT: Make "Action Required" highly specific, e.g. "Draft email to title company", "Call John at 5 PM", "Go to Publix". Do not just put "Call/Email".
-    - Touchpoints headers: ["FALSE", "Date", "Person", "Context", "Drafted SMS"]
-    - Recon headers: ["FALSE", "Date", "Opportunity", "Location", "Next Steps"]
-    - Personal headers: ["FALSE", "Date", "Item", "Details", "Notes"]
-    - Contacts headers: ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" here)
+    - Touchpoints headers: ["FALSE", "Date", "Time Due", "Person", "Context", "Drafted SMS"]
+    - Recon headers: ["FALSE", "Date", "Time Due", "Opportunity", "Location", "Next Steps"]
+    - Personal headers: ["FALSE", "Date", "Time Due", "Item", "Details", "Notes"]
+    - Contacts headers: ["Name", "Phone", "Email", "Context / VIP Status"] (No "FALSE" or "Time Due" here)
+    - "Time Due" should be formatting like "10:30 AM", "Morning", "Afternoon", or left as an empty string "" if not stated.
     - If adding a row with a checkbox, the first item in row_data must be the string "FALSE".
     - Use "YYYY-MM-DD" for dates.
     
