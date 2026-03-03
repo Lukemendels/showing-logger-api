@@ -122,6 +122,11 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     - If adding a row with a checkbox, the first item in row_data must be the string "FALSE".
     - Use "YYYY-MM-DD" for dates.
     
+    ### CRITICAL BUSINESS LOGIC:
+    - If the user asks to explicitly perform TWO overlapping things (e.g. "Draft an SMS to Kevin" AND "Remind me to do it tomorrow"), you should generate TWO distinct Actions in the array. 
+    - The first action goes to the Touchpoints tab to map the context and actually draft the SMS.
+    - The second action goes to the Tasks tab ("Send Kevin SMS") so it hits their daily to-do list workflow.
+    
     Rules for CHECK_OFF:
     - task_name is required. It should match or closely resemble the name of the item to be checked off.
     - row_data should be null.
