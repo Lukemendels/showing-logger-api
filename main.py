@@ -84,6 +84,7 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     Rules for ADD_ROW:
     - row_data must perfectly match the tab's headers.
     - Tasks headers: ["FALSE", "Date", "Task", "Details", "Action Required"]
+      * IMPORTANT: Make "Action Required" highly specific, e.g. "Draft email to title company", "Call John at 5 PM", "Go to Publix". Do not just put "Call/Email".
     - Touchpoints headers: ["FALSE", "Date", "Person", "Context", "Drafted SMS"]
     - Recon headers: ["FALSE", "Date", "Opportunity", "Location", "Next Steps"]
     - Personal headers: ["FALSE", "Date", "Item", "Details", "Notes"]
