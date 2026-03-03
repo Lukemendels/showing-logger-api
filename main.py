@@ -6,6 +6,7 @@ from google import genai
 from dotenv import load_dotenv
 import httpx
 import json
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -49,38 +50,48 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     if not client:
         raise HTTPException(status_code=500, detail="Gemini API Key is missing. Backend not fully configured.")
 
-    # 1. Fetch Current State from Google Sheets
-    sheet_context = {}
-    if SHEETS_WEBHOOK_URL:
-        try:
-            async with httpx.AsyncClient(follow_redirects=True) as http_client:
-                context_response = await http_client.get(
-                    SHEETS_WEBHOOK_URL,
-                    timeout=10.0
-                )
-                context_response.raise_for_status()
-                sheet_context = context_response.json()
-        except Exception as e:
-            print(f"Error fetching state from Sheets Webhook: {e}")
-            # We can still proceed even if context fails
+    # Define helper coroutines for concurrent execution
+    async def fetch_sheet_context():
+        context = {}
+        if SHEETS_WEBHOOK_URL:
+            try:
+                async with httpx.AsyncClient(follow_redirects=True) as http_client:
+                    context_response = await http_client.get(
+                        SHEETS_WEBHOOK_URL,
+                        timeout=15.0
+                    )
+                    context_response.raise_for_status()
+                    context = context_response.json()
+            except Exception as e:
+                print(f"Error fetching state from Sheets Webhook: {e}")
+        return context
 
-    # 2. Transcribe Audio (Prompt 1)
-    transcription_prompt = "Listen to this audio and return a highly accurate, raw text transcription of exactly what is said. Do not add any formatting or commentary, just the transcription."
+    async def fetch_transcription(audio_bytes_data, mime_type):
+        transcription_prompt = "Listen to this audio and return a highly accurate, raw text transcription of exactly what is said. Do not add any formatting or commentary, just the transcription."
+        try:
+            # Use to_thread since client.models.generate_content is synchronous and blocks the loop
+            transcription_response = await asyncio.to_thread(
+                client.models.generate_content,
+                model='gemini-2.5-flash',
+                contents=[
+                    genai.types.Part.from_bytes(data=audio_bytes_data, mime_type=mime_type),
+                    transcription_prompt
+                ]
+            )
+            return transcription_response.text
+        except Exception as e:
+            print(f"Error during audio transcription: {e}")
+            raise HTTPException(status_code=500, detail="Failed to transcribe audio with Gemini")
+
     audio_bytes = await audio.read()
-    
-    try:
-        transcription_response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[
-                genai.types.Part.from_bytes(data=audio_bytes, mime_type=audio.content_type or "audio/mp4"),
-                transcription_prompt
-            ]
-        )
-        raw_transcript = transcription_response.text
-        print(f"Transcription complete: {raw_transcript}")
-    except Exception as e:
-        print(f"Error during audio transcription: {e}")
-        raise HTTPException(status_code=500, detail="Failed to transcribe audio with Gemini")
+    mime_type = audio.content_type or "audio/mp4"
+
+    # Run network request and model transcription concurrently
+    sheet_context, raw_transcript = await asyncio.gather(
+        fetch_sheet_context(),
+        fetch_transcription(audio_bytes, mime_type)
+    )
+    print(f"Transcription complete: {raw_transcript}")
 
     # 3. Route and Format Actions (Prompt 2)
     current_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -135,7 +146,8 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     """
 
     try:
-        routing_response = client.models.generate_content(
+        routing_response = await asyncio.to_thread(
+            client.models.generate_content,
             model='gemini-2.5-flash',
             contents=formatting_prompt,
             config=genai.types.GenerateContentConfig(
@@ -157,7 +169,7 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
                 sheet_response = await http_client.post(
                     SHEETS_WEBHOOK_URL, 
                     json=extracted_data,
-                    timeout=15.0
+                    timeout=30.0
                 )
                 sheet_response.raise_for_status()
                 sheet_status = sheet_response.json()
