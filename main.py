@@ -64,17 +64,37 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
             print(f"Error fetching state from Sheets Webhook: {e}")
             # We can still proceed even if context fails
 
-    current_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # 2. Transcribe Audio (Prompt 1)
+    transcription_prompt = "Listen to this audio and return a highly accurate, raw text transcription of exactly what is said. Do not add any formatting or commentary, just the transcription."
+    audio_bytes = await audio.read()
+    
+    try:
+        transcription_response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                genai.types.Part.from_bytes(data=audio_bytes, mime_type=audio.content_type or "audio/mp4"),
+                transcription_prompt
+            ]
+        )
+        raw_transcript = transcription_response.text
+        print(f"Transcription complete: {raw_transcript}")
+    except Exception as e:
+        print(f"Error during audio transcription: {e}")
+        raise HTTPException(status_code=500, detail="Failed to transcribe audio with Gemini")
 
-    # 2. Ask Gemini to extract data
-    prompt = f"""
-    You are an intelligent Second Brain assistant. Listen to the audio dictation and parse it into structured actions for a Google Sheet.
+    # 3. Route and Format Actions (Prompt 2)
+    current_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    formatting_prompt = f"""
+    You are an intelligent Second Brain assistant. Read the provided Transcription and parse it into structured actions for a Google Sheet.
     
     Current Date and Time: {current_datetime}
     
     Current Context:
     - Active Tasks: {json.dumps(sheet_context.get('tasks', []))}
     - Contacts: {json.dumps(sheet_context.get('contacts', []))}
+    
+    Transcription:
+    "{raw_transcript}"
     
     Based on the dictation, create a list of actions to perform on the Google Sheet.
     
@@ -105,25 +125,20 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     Generate the JSON matching the ActionList schema.
     """
 
-    audio_bytes = await audio.read()
-
     try:
-        response = client.models.generate_content(
+        routing_response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=[
-                genai.types.Part.from_bytes(data=audio_bytes, mime_type=audio.content_type or "audio/mp4"),
-                prompt
-            ],
+            contents=formatting_prompt,
             config=genai.types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ActionList,
                 temperature=0.2
             ),
         )
-        extracted_data = json.loads(response.text)
+        extracted_data = json.loads(routing_response.text)
     except Exception as e:
-        print(f"Error calling Gemini: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process audio with Gemini")
+        print(f"Error calling Gemini for routing: {e}")
+        raise HTTPException(status_code=500, detail="Failed to route transcript with Gemini")
 
     # 3. Send the extracted actions to Google Sheets Webhook
     sheet_status = "Skipped (No URL provided)"
