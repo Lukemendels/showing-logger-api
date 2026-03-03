@@ -102,6 +102,9 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     
     Current Context:
     - Active Tasks: {json.dumps(sheet_context.get('tasks', []))}
+    - Active Touchpoints: {json.dumps(sheet_context.get('touchpoints', []))}
+    - Active Recon: {json.dumps(sheet_context.get('recon', []))}
+    - Active Personal: {json.dumps(sheet_context.get('personal', []))}
     - Contacts: {json.dumps(sheet_context.get('contacts', []))}
     
     Transcription:
@@ -137,10 +140,12 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
     - If the user asks to explicitly perform TWO overlapping things (e.g. "Draft an SMS to Kevin" AND "Remind me to do it tomorrow"), you should generate TWO distinct Actions in the array. 
     - The first action goes to the Touchpoints tab to map the context and actually draft the SMS.
     - The second action goes to the Tasks tab ("Send Kevin SMS") so it hits their daily to-do list workflow.
+    - If the user dictates multiple unrelated items (e.g. "Also do this, and then do that"), generate separate actions for every single item!
     
     Rules for CHECK_OFF:
     - task_name is required. It should match or closely resemble the name of the item to be checked off.
     - row_data should be null.
+    - IMPORTANT: If the user asks to check off an item that spans multiple tabs (e.g. checking off an SMS might exist in both "Tasks" and "Touchpoints"), generate a distinct CHECK_OFF action for EACH relevant tab to keep them in sync. Use the full Current Context provided above to detect if matching items exist in multiple tabs.
     
     Generate the JSON matching the ActionList schema.
     """

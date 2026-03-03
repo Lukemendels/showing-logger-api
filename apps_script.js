@@ -86,18 +86,24 @@ function doGet(e) {
         const ss = SpreadsheetApp.getActiveSpreadsheet();
         let state = {};
 
-        // Get active tasks (where Done checkbox in Col A is missing or FALSE)
-        const tasksSheet = ss.getSheetByName("Tasks");
-        if (tasksSheet) {
-            const lastRow = tasksSheet.getLastRow();
-            if (lastRow > 1) {
-                const data = tasksSheet.getRange(2, 1, lastRow - 1, 4).getValues(); // Col A(Done), B(Date), C(Time Due), D(Task)
-                // Keep only unchecked tasks
-                state.tasks = data.filter(r => r[0] !== true).map(r => r[3]);
-            } else {
-                state.tasks = [];
+        // Helper function to dynamically grab active items from a given sheet
+        function getUncheckedItems(sheetName) {
+            const sheet = ss.getSheetByName(sheetName);
+            if (sheet) {
+                const lastRow = sheet.getLastRow();
+                if (lastRow > 1) {
+                    const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues(); // Col A(Done)... D(Name)
+                    return data.filter(r => r[0] !== true).map(r => r[3]).filter(Boolean);
+                }
             }
+            return [];
         }
+
+        // Get active items across all tabs
+        state.tasks = getUncheckedItems("Tasks");
+        state.touchpoints = getUncheckedItems("Touchpoints");
+        state.recon = getUncheckedItems("Recon");
+        state.personal = getUncheckedItems("Personal");
 
         // Get Contacts
         const contactsSheet = ss.getSheetByName("Contacts");
@@ -180,6 +186,9 @@ function doPost(e) {
                     if (!found) {
                         results.push("Could not find '" + action.task_name + "' to check off in " + action.tab);
                     }
+
+                    // Drop the checked item to the bottom of the unchecked list by sorting ascending (FALSE comes before TRUE)
+                    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
                 }
             }
         });
