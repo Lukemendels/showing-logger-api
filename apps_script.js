@@ -32,12 +32,13 @@ function setupSecondBrainUI() {
         sheet.setHiddenGridlines(true);
 
         // Format the rest of the sheet (Font, alignment, text wrapping)
-        const bodyRange = sheet.getRange(2, 1, 999, tabInfo.headers.length);
+        // We will only pre-load 50 rows instead of 1000 so checked items stay close to the top
+        const bodyRange = sheet.getRange(2, 1, 50, tabInfo.headers.length);
         bodyRange.setFontFamily("Montserrat").setVerticalAlignment("middle");
-        sheet.getRange(2, 2, 999, tabInfo.headers.length - 1).setWrap(true);
+        sheet.getRange(2, 2, 50, tabInfo.headers.length - 1).setWrap(true);
 
         // Insert Checkboxes into Column A
-        const checkboxRange = sheet.getRange(2, 1, 999, 1);
+        const checkboxRange = sheet.getRange(2, 1, 50, 1);
         checkboxRange.insertCheckboxes();
 
         // Add Conditional Formatting (Strike-through and grey out when checked)
@@ -199,5 +200,26 @@ function doPost(e) {
     } catch (error) {
         return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": error.toString() }))
             .setMimeType(ContentService.MimeType.JSON);
+    }
+}
+
+// 4. Trigger - Auto-sorts when a user manually clicks a checkbox
+function onEdit(e) {
+    if (!e || !e.range) return;
+
+    var sheet = e.range.getSheet();
+    var sheetName = sheet.getName();
+
+    // Only run on our active workflow tabs
+    var allowedTabs = ["Tasks", "Touchpoints", "Recon", "Personal"];
+    if (allowedTabs.indexOf(sheetName) === -1) return;
+
+    // Only sort if they edited Column A (the checkbox column) and they aren't in the header
+    if (e.range.getColumn() === 1 && e.range.getRow() > 1) {
+        var lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+            // Sort the table alphabetically by Column A (FALSE comes before TRUE)
+            sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+        }
     }
 }
