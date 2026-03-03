@@ -1,4 +1,5 @@
 import os
+import datetime
 from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from google import genai
@@ -63,9 +64,13 @@ async def process_second_brain(audio: UploadFile = File(...), auth: str = Depend
             print(f"Error fetching state from Sheets Webhook: {e}")
             # We can still proceed even if context fails
 
+    current_datetime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     # 2. Ask Gemini to extract data
     prompt = f"""
     You are an intelligent Second Brain assistant. Listen to the audio dictation and parse it into structured actions for a Google Sheet.
+    
+    Current Date and Time: {current_datetime}
     
     Current Context:
     - Active Tasks: {json.dumps(sheet_context.get('tasks', []))}
