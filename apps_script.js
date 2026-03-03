@@ -146,12 +146,29 @@ function doPost(e) {
             }
 
             if (action.action_type === "ADD_ROW") {
-                // 1. Insert row above Row 2 (pushes current Row 2 down to Row 3)
-                // insertRowBefore(2) copies the formatting of the row below it automatically (checkboxes, conditional formatting).
-                sheet.insertRowBefore(2);
+                // Find where to insert: bottom of unchecked tasks, above checked tasks (or above empty rows)
+                var lastRow = sheet.getLastRow();
+                var insertIndex = 2; // Default if completely empty
+                if (lastRow > 1) {
+                    var data = sheet.getRange(2, 1, lastRow - 1, 2).getValues(); // Cols A(Done), B(Date)
+                    for (var i = 0; i < data.length; i++) {
+                        var isChecked = data[i][0] === true;
+                        var isBlank = data[i][0] === false && data[i][1] === "";
+                        if (isChecked || isBlank) {
+                            insertIndex = i + 2;
+                            break;
+                        }
+                        if (i === data.length - 1) {
+                            insertIndex = i + 3;
+                        }
+                    }
+                }
+
+                // 1. Insert row at the dynamically calculated boundary
+                sheet.insertRowBefore(insertIndex);
 
                 // 2. Clear background just in case, but keep the checkbox formatting
-                var newRowRange = sheet.getRange(2, 1, 1, sheet.getMaxColumns());
+                var newRowRange = sheet.getRange(insertIndex, 1, 1, sheet.getMaxColumns());
                 newRowRange.setBackground(null);
                 newRowRange.setFontWeight("normal");
 
@@ -161,10 +178,10 @@ function doPost(e) {
                     rowData[0] = false;
                 }
 
-                // 4. Write data to row 2
-                sheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
+                // 4. Write data to the new row
+                sheet.getRange(insertIndex, 1, 1, rowData.length).setValues([rowData]);
 
-                results.push("Inserted row at top of " + action.tab);
+                results.push("Inserted row at dynamically found boundary in " + action.tab);
             }
 
             else if (action.action_type === "CHECK_OFF") {
@@ -188,8 +205,18 @@ function doPost(e) {
                         results.push("Could not find '" + action.task_name + "' to check off in " + action.tab);
                     }
 
-                    // Drop the checked item to the bottom of the unchecked list by sorting ascending (FALSE comes before TRUE)
-                    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+                    // Find the real end of the populated tasks before sorting, so we don't grab empty checkboxes
+                    var dateRange = sheet.getRange(2, 2, lastRow - 1, 3).getValues();
+                    var realLastRow = 1;
+                    for (var k = dateRange.length - 1; k >= 0; k--) {
+                        if (dateRange[k][0] !== "" || dateRange[k][2] !== "") {
+                            realLastRow = k + 2;
+                            break;
+                        }
+                    }
+                    if (realLastRow > 1) {
+                        sheet.getRange(2, 1, realLastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+                    }
                 }
             }
         });
@@ -218,8 +245,20 @@ function onEdit(e) {
     if (e.range.getColumn() === 1 && e.range.getRow() > 1) {
         var lastRow = sheet.getLastRow();
         if (lastRow > 1) {
-            // Sort the table alphabetically by Column A (FALSE comes before TRUE)
-            sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+            // Find the real end of the populated tasks before sorting
+            var dataRange = sheet.getRange(2, 2, lastRow - 1, 3).getValues();
+            var realLastRow = 1;
+            for (var i = dataRange.length - 1; i >= 0; i--) {
+                if (dataRange[i][0] !== "" || dataRange[i][2] !== "") {
+                    realLastRow = i + 2;
+                    break;
+                }
+            }
+            if (realLastRow > 1) {
+                // By sorting only the populated rows, it drops the Checked item exactly at the boundary 
+                // between unchecked items and empty rows, without messing up the rest of the empty checkboxes!
+                sheet.getRange(2, 1, realLastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+            }
         }
     }
 }
